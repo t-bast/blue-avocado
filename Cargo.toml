@@ -1,0 +1,6 @@
+[package]
+name = "blue-avocado"
+version = "0.1.0"
+authors = ["t-bast <bastien.teinturier@outlook.com>"]
+
+[dependencies]
