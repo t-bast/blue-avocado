@@ -37,6 +37,7 @@ impl Trivium {
         };
 
         instance.init();
+        instance.warm_up();
 
         instance
     }
@@ -51,6 +52,69 @@ impl Trivium {
         }
 
         self.r3[13] = 14u8;
+    }
+
+    fn warm_up(&mut self) {
+        for _i in 0..1152 {
+            self.clock();
+        }
+    }
+
+    /// clock simulates one clock cycle and returns the key stream bit.
+    /// The return value will be either 0 or 1.
+    /// This is highly inefficient: the naive implementation has to shift
+    /// every byte and compute single-bit results over bytes.
+    /// This cipher was really meant for hardware implementations.
+    fn clock(&mut self) -> u8 {
+        // Register 1
+        // Out = XOR(r1[65], r1[92], AND(r1[90], r1[91]))
+        let out1: u8 =
+            1u8 & (self.r1[8] >> 6 ^ self.r1[11] >> 3 ^ (self.r1[11] >> 4 & self.r1[11] >> 5));
+
+        // Register 2
+        // Out = XOR(r2[68], r2[83], AND(r2[81], r2[82]))
+        let out2: u8 =
+            1u8 & (self.r2[8] >> 3 ^ self.r2[10] >> 4 ^ (self.r2[10] >> 5 & self.r2[10] >> 6));
+
+        // Register 3
+        // Out = XOR(r3[65], r3[110], AND(r3[108], r3[109]))
+        let out3: u8 =
+            1u8 & (self.r3[8] >> 6 ^ self.r3[13] >> 1 ^ (self.r3[13] >> 2 & self.r3[13] >> 3));
+
+        // Register 1
+        // In = XOR(out(r3), r1[68])
+        let in1: u8 = 1u8 & (out3 ^ self.r1[8] >> 3);
+
+        // Register 2
+        // In = XOR(out(r1), r2[77])
+        let in2: u8 = 1u8 & (out1 ^ self.r2[9] >> 2);
+
+        // Register 3
+        // In = XOR(out(r2), r3[86])
+        let in3: u8 = 1u8 & (out2 ^ self.r3[10] >> 1);
+
+        // Shift everything to the right
+        Trivium::shift(&mut self.r1);
+        Trivium::shift(&mut self.r2);
+        Trivium::shift(&mut self.r3);
+
+        // Insert new first bit
+        self.r1[0] = (in1 << 7) + self.r1[0];
+        self.r2[0] = (in2 << 7) + self.r2[0];
+        self.r3[0] = (in3 << 7) + self.r3[0];
+
+        // Return key stream bit
+        out1 ^ out2 ^ out3
+    }
+
+    // Shift bytes to the right once.
+    fn shift(r: &mut [u8]) {
+        let mut carry = 0u8;
+        for b in r {
+            let new_carry = *b & 1u8;
+            *b = (*b >> 1) + (carry << 7);
+            carry = new_carry;
+        }
     }
 }
 
@@ -98,5 +162,19 @@ mod tests {
             ],
             cipher.r3
         )
+    }
+
+    #[test]
+    fn new_trivium_warm_up() {
+        let cipher = Trivium::new(TEST_IV, TEST_KEY);
+        assert_ne!(TEST_IV, &cipher.r1[..IV_SIZE_BYTES]);
+        assert_ne!(TEST_KEY, &cipher.r2[..KEY_SIZE_BYTES]);
+    }
+
+    #[test]
+    fn shift() {
+        let mut r = [129u8, 96u8];
+        Trivium::shift(&mut r);
+        assert_eq!([64u8, 176u8], r);
     }
 }
