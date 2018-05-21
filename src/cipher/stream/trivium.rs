@@ -28,15 +28,29 @@ pub struct Trivium {
 
 impl Trivium {
     pub fn new(iv: IV, key: Key) -> Trivium {
-        let instance = Trivium {
+        let mut instance = Trivium {
             r1: [0u8; 12],
             r2: [0u8; 11],
             r3: [0u8; 14],
             iv: iv,
             key: key,
         };
-        // TODO: initalize and warm-up registers.
+
+        instance.init();
+
         instance
+    }
+
+    fn init(&mut self) {
+        for i in 0..IV_SIZE_BYTES {
+            self.r1[i] = self.iv[i];
+        }
+
+        for i in 0..KEY_SIZE_BYTES {
+            self.r2[i] = self.key[i]
+        }
+
+        self.r3[13] = 14u8;
     }
 }
 
@@ -44,12 +58,45 @@ impl Trivium {
 mod tests {
     use super::*;
 
+    pub const TEST_IV: IV = [24u8; IV_SIZE_BYTES];
+    pub const TEST_KEY: Key = [42u8; KEY_SIZE_BYTES];
+
     #[test]
     fn new_trivium_sets_iv_and_key() {
-        let iv: IV = [24u8; IV_SIZE_BYTES];
-        let key: Key = [42u8; KEY_SIZE_BYTES];
-        let cipher = Trivium::new(iv, key);
-        assert_eq!(iv, cipher.iv);
-        assert_eq!(key, cipher.key);
+        let cipher = Trivium::new(TEST_IV, TEST_KEY);
+        assert_eq!(TEST_IV, cipher.iv);
+        assert_eq!(TEST_KEY, cipher.key);
+    }
+
+    #[test]
+    fn trivium_init() {
+        let mut cipher = Trivium {
+            iv: TEST_IV,
+            key: TEST_KEY,
+            r1: [0u8; 12],
+            r2: [0u8; 11],
+            r3: [0u8; 14],
+        };
+
+        cipher.init();
+
+        assert_eq!(
+            [
+                24u8, 24u8, 24u8, 24u8, 24u8, 24u8, 24u8, 24u8, 24u8, 24u8, 0u8, 0u8
+            ],
+            cipher.r1
+        );
+        assert_eq!(
+            [
+                42u8, 42u8, 42u8, 42u8, 42u8, 42u8, 42u8, 42u8, 42u8, 42u8, 0u8
+            ],
+            cipher.r2
+        );
+        assert_eq!(
+            [
+                0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 14u8
+            ],
+            cipher.r3
+        )
     }
 }
