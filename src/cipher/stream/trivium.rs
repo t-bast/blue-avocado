@@ -28,6 +28,7 @@ pub struct Trivium {
 
 // Public methods.
 impl Trivium {
+    /// new creates a Trivium cipher with the given key and IV.
     pub fn new(iv: IV, key: Key) -> Trivium {
         let mut instance = Trivium {
             r1: [0u8; 12],
@@ -43,6 +44,7 @@ impl Trivium {
         instance
     }
 
+    /// encrypt encrypts a given message.
     pub fn encrypt(&mut self, message: &[u8]) -> Vec<u8> {
         let mut encrypted: Vec<u8> = Vec::new();
 
@@ -54,6 +56,7 @@ impl Trivium {
         encrypted
     }
 
+    /// decrypt decrypts a given message.
     pub fn decrypt(&mut self, cipher: &[u8]) -> Vec<u8> {
         // Decryption is exactly the same thing as encryption.
         self.encrypt(cipher)
