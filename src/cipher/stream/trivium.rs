@@ -26,6 +26,7 @@ pub struct Trivium {
     key: Key,
 }
 
+// Public methods.
 impl Trivium {
     pub fn new(iv: IV, key: Key) -> Trivium {
         let mut instance = Trivium {
@@ -42,6 +43,25 @@ impl Trivium {
         instance
     }
 
+    pub fn encrypt(&mut self, message: &[u8]) -> Vec<u8> {
+        let mut encrypted: Vec<u8> = Vec::new();
+
+        for (_, b) in message.iter().enumerate() {
+            let k = self.clock_byte();
+            encrypted.push(b ^ k);
+        }
+
+        encrypted
+    }
+
+    pub fn decrypt(&mut self, cipher: &[u8]) -> Vec<u8> {
+        // Decryption is exactly the same thing as encryption.
+        self.encrypt(cipher)
+    }
+}
+
+// Private methods.
+impl Trivium {
     fn init(&mut self) {
         for i in 0..IV_SIZE_BYTES {
             self.r1[i] = self.iv[i];
@@ -105,6 +125,17 @@ impl Trivium {
 
         // Return key stream bit
         out1 ^ out2 ^ out3
+    }
+
+    /// clock_byte simulates 8 clock cycles and returns a key stream byte.
+    fn clock_byte(&mut self) -> u8 {
+        let mut b = 0u8;
+
+        for i in 0..8 {
+            b |= self.clock() << (7 - i);
+        }
+
+        b
     }
 
     // Shift bytes to the right once.
@@ -176,5 +207,16 @@ mod tests {
         let mut r = [129u8, 96u8];
         Trivium::shift(&mut r);
         assert_eq!([64u8, 176u8], r);
+    }
+
+    #[test]
+    fn encrypt_and_decrypt() {
+        let mut encrypt_cipher = Trivium::new(TEST_IV, TEST_KEY);
+        let encrypted = encrypt_cipher.encrypt("there is no spoon".as_bytes());
+
+        let mut decrypt_cipher = Trivium::new(TEST_IV, TEST_KEY);
+        let decrypted = decrypt_cipher.decrypt(&encrypted);
+
+        assert_eq!("there is no spoon".as_bytes(), decrypted.as_slice());
     }
 }
