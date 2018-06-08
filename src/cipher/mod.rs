@@ -4,4 +4,5 @@
 //! These should be used in symmetric cryptography where participants know
 //! a shared secret key.
 
+pub mod block;
 pub mod stream;
