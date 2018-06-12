@@ -113,7 +113,93 @@ impl Mars {
 
     /// decrypt a block of data.
     pub fn decrypt(&self, a: u32, b: u32, c: u32, d: u32) -> (u32, u32, u32, u32) {
-        self.encrypt(a, b, c, d)
+        // Forward Mixing.
+        let mut a = a.wrapping_add(self.key[36]);
+        let mut b = b.wrapping_add(self.key[37]);
+        let mut c = c.wrapping_add(self.key[38]);
+        let mut d = d.wrapping_add(self.key[39]);
+
+        for i in (0..8).rev() {
+            let dd = d;
+            d = c;
+            c = b;
+            b = a;
+            a = dd;
+
+            a = a.rotate_right(24);
+            d = (d ^ s0(a.rotate_right(8))).wrapping_add(s1(a.rotate_right(16)));
+            c = c.wrapping_add(s0(a.rotate_right(24)));
+            b = b ^ s1(a);
+
+            if i == 2 || i == 6 {
+                a = a.wrapping_add(d);
+            }
+
+            if i == 3 || i == 7 {
+                a = a.wrapping_add(b);
+            }
+        }
+
+        // Cryptographic Core.
+        for i in (0..16).rev() {
+            let dd = d;
+            d = c;
+            c = b;
+            b = a;
+            a = dd;
+
+            a = a.rotate_right(13);
+
+            let r = a.rotate_left(13)
+                .wrapping_mul(self.key[2 * i + 5])
+                .rotate_left(10);
+            let m = a.wrapping_add(self.key[2 * i + 4])
+                .rotate_left(r.rotate_right(5) % 32);
+            let l = (s(m) ^ r.rotate_right(5) ^ r).rotate_left(r % 32);
+
+            if i < 8 {
+                b = b.wrapping_sub(l);
+            } else {
+                b = b ^ r;
+            }
+
+            c = c.wrapping_sub(m);
+
+            if i < 8 {
+                d = d ^ r;
+            } else {
+                d = d.wrapping_sub(l);
+            }
+        }
+
+        // Backwards Mixing.
+        for i in (0..8).rev() {
+            let dd = d;
+            d = c;
+            c = b;
+            b = a;
+            a = dd;
+
+            if i == 0 || i == 4 {
+                a = a.wrapping_sub(d);
+            }
+
+            if i == 1 || i == 5 {
+                a = a.wrapping_sub(b);
+            }
+
+            a = a.rotate_left(24);
+            d = d ^ s1(a.rotate_right(24));
+            c = c.wrapping_sub(s0(a.rotate_right(16)));
+            b = b.wrapping_sub(s1(a.rotate_right(8))) ^ s0(a);
+        }
+
+        a = a.wrapping_sub(self.key[0]);
+        b = b.wrapping_sub(self.key[1]);
+        c = c.wrapping_sub(self.key[2]);
+        d = d.wrapping_sub(self.key[3]);
+
+        (a, b, c, d)
     }
 }
 
