@@ -55,12 +55,7 @@ impl Mars {
 
         // Cryptographic core.
         for i in 0..16 {
-            let r = a.rotate_left(13)
-                .wrapping_mul(self.key[2 * i + 5])
-                .rotate_left(10);
-            let m = a.wrapping_add(self.key[2 * i + 4])
-                .rotate_left(r.rotate_right(5) % 32);
-            let l = (s(m) ^ r.rotate_right(5) ^ r).rotate_left(r % 32);
+            let (l, m, r) = Mars::efunc(a, self.key[2 * i + 4], self.key[2 * i + 5]);
 
             if i < 8 {
                 b = b.wrapping_add(l);
@@ -150,12 +145,7 @@ impl Mars {
 
             a = a.rotate_right(13);
 
-            let r = a.rotate_left(13)
-                .wrapping_mul(self.key[2 * i + 5])
-                .rotate_left(10);
-            let m = a.wrapping_add(self.key[2 * i + 4])
-                .rotate_left(r.rotate_right(5) % 32);
-            let l = (s(m) ^ r.rotate_right(5) ^ r).rotate_left(r % 32);
+            let (l, m, r) = Mars::efunc(a, self.key[2 * i + 4], self.key[2 * i + 5]);
 
             if i < 8 {
                 b = b.wrapping_sub(l);
@@ -314,6 +304,14 @@ impl Mars {
         }
 
         res
+    }
+
+    /// efunc is used in the encryption and decryption algorithms.
+    fn efunc(input: u32, key1: u32, key2: u32) -> (u32, u32, u32) {
+        let r = input.rotate_left(13).wrapping_mul(key2).rotate_left(10);
+        let m = input.wrapping_add(key1).rotate_left(r.rotate_right(5) % 32);
+        let l = (s(m) ^ r.rotate_right(5) ^ r).rotate_left(r % 32);
+        (l, m, r)
     }
 }
 
