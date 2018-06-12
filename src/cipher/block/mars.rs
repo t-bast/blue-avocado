@@ -3,6 +3,142 @@
 //! `mars` implements the mars block cipher.
 //! Mars was one of the AES finalists.
 
+/// A Mars block cipher.
+pub struct Mars {
+    key: [u32; 40],
+}
+
+// Public methods.
+impl Mars {
+    /// new creates a mars cipher with the given key.
+    /// The key needs to contain between 4 and 14 words.
+    pub fn new(key: &[u32]) -> Mars {
+        if key.len() < 4 || key.len() > 14 {
+            panic!("Key length must be between 4 and 14.");
+        }
+
+        let mut instance = Mars { key: [0u32; 40] };
+
+        instance.expand_key(key);
+
+        instance
+    }
+}
+
+// Private methods.
+impl Mars {
+    /// Apply the key expansion algorithm.
+    fn expand_key(&mut self, key: &[u32]) {
+        let mut t = [0u32; 15];
+        for i in 0..key.len() {
+            t[i] = key[i];
+        }
+
+        t[key.len()] = key.len() as u32;
+
+        for j in 0..4 {
+            // Linear Key-Word Expansion.
+            for i in 0..15 {
+                let c1 = (t[(i + 8) % 15] ^ t[(i + 13) % 15]).rotate_left(3);
+                let c2 = (4 * i + j) as u32;
+                t[i] = t[i] ^ c1 ^ c2;
+            }
+
+            // S-box Based Stirring of Key-Words.
+            for _ in 0..4 {
+                for i in 0..15 {
+                    t[i] = (t[i].wrapping_add(s(t[(i + 14) % 15]))).rotate_left(9);
+                }
+            }
+
+            // Store Next 10 Key-Words into K[].
+            for i in 0..10 {
+                self.key[10 * j + i] = t[(4 * i) % 15];
+            }
+        }
+
+        // Modifying Multiplication Key-Words.
+        let b: [u32; 4] = [0xa4a8d57b, 0x5b5d193b, 0xc8a8309b, 0x73f9a978];
+        for i in 2..18 {
+            let ii = 2 * i + 1;
+            let j = (self.key[ii] % 4) as usize;
+            let w = self.key[ii] | 3;
+            let m = Mars::compute_key_mask(w);
+            let r = self.key[ii - 1] % 32;
+            let p = b[j].rotate_left(r);
+            self.key[ii] = w ^ (p & m);
+        }
+    }
+
+    /// Compute the word mask used in the key expansion algorithm.
+    fn compute_key_mask(w: u32) -> u32 {
+        // According to the spec:
+        // M = 0
+        // M(n) = 1 iff:
+        //  * w(n) belongs to a sequence of 10 consecutive 0's or 1's
+        //  * 2 <= n <= 30
+        //  * w(n-1) == w(n) == w(n+1)
+        // In particular, it means that M(0)=M(1)=M(31)=0.
+
+        let mut m = [false; 32];
+        for i in 2..31 {
+            let prev = (w >> (i - 1)) % 2;
+            let cur = (w >> i) % 2;
+            let next = (w >> (i + 1)) % 2;
+
+            if cur != prev || cur != next {
+                continue;
+            }
+
+            // There is most likely a more efficient and more elegant solution than this.
+            let mut seq = 1;
+
+            let mut j = i - 1;
+            while seq < 10 {
+                let tmp = (w >> j) % 2;
+                if tmp != cur {
+                    break;
+                }
+
+                seq += 1;
+                if j == 0 {
+                    break;
+                }
+
+                j -= 1;
+            }
+
+            j = i + 1;
+            while seq < 10 {
+                let tmp = (w >> j) % 2;
+                if tmp != cur {
+                    break;
+                }
+
+                seq += 1;
+                if j == 31 {
+                    break;
+                }
+
+                j += 1;
+            }
+
+            if seq >= 10 {
+                m[i] = true;
+            }
+        }
+
+        let mut res = 0;
+        for i in 0..32 {
+            if m[i] {
+                res += 1 << i;
+            }
+        }
+
+        res
+    }
+}
+
 /// s discards irrelevant input bits and looks up the S-box.
 fn s(i: u32) -> u32 {
     let i: usize = (i % 512) as usize;
@@ -106,5 +242,37 @@ mod tests {
     #[test]
     fn s_box() {
         assert_eq!(0x77b56b86, s(0x42424351));
+    }
+
+    #[test]
+    #[should_panic]
+    fn new_key_too_small() {
+        Mars::new(&[0u32; 3]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn new_key_too_big() {
+        Mars::new(&[0u32; 15]);
+    }
+
+    #[test]
+    fn new() {
+        let instance = Mars::new(&[42u32; 7]);
+        assert_ne!(0u32, instance.key[0]);
+        assert_ne!(42u32, instance.key[0]);
+    }
+
+    #[test]
+    fn compute_key_mask() {
+        assert_eq!(
+            0b01111111111111111111111111111000,
+            Mars::compute_key_mask(0b00000000000000000000000000000011)
+        );
+
+        assert_eq!(
+            0b01111111111000111111110000000000,
+            Mars::compute_key_mask(0b00000000000010000000000111111111)
+        );
     }
 }
