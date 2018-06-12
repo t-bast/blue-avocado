@@ -23,6 +23,98 @@ impl Mars {
 
         instance
     }
+
+    /// encrypt a block of data.
+    pub fn encrypt(&self, a: u32, b: u32, c: u32, d: u32) -> (u32, u32, u32, u32) {
+        // Forward Mixing.
+        let mut a = a.wrapping_add(self.key[0]);
+        let mut b = b.wrapping_add(self.key[1]);
+        let mut c = c.wrapping_add(self.key[2]);
+        let mut d = d.wrapping_add(self.key[3]);
+
+        for i in 0..8 {
+            b = (b ^ s0(a)).wrapping_add(s1(a.rotate_right(8)));
+            c = c.wrapping_add(s0(a.rotate_right(16)));
+            d = d ^ s1(a.rotate_right(24));
+            a = a.rotate_right(24);
+
+            if i == 1 || i == 5 {
+                a = a.wrapping_add(b);
+            }
+
+            if i == 0 || i == 4 {
+                a = a.wrapping_add(d);
+            }
+
+            let aa = a;
+            a = b;
+            b = c;
+            c = d;
+            d = aa;
+        }
+
+        // Cryptographic core.
+        for i in 0..16 {
+            let r = a.rotate_left(13)
+                .wrapping_mul(self.key[2 * i + 5])
+                .rotate_left(10);
+            let m = a.wrapping_add(self.key[2 * i + 4])
+                .rotate_left(r.rotate_right(5) % 32);
+            let l = (s(m) ^ r.rotate_right(5) ^ r).rotate_left(r % 32);
+
+            if i < 8 {
+                b = b.wrapping_add(l);
+            } else {
+                b = b ^ r;
+            }
+
+            c = c.wrapping_add(m);
+
+            if i < 8 {
+                d = d ^ r;
+            } else {
+                d = d.wrapping_add(l);
+            }
+
+            let aa = a;
+            a = b;
+            b = c;
+            c = d;
+            d = aa.rotate_left(13);
+        }
+
+        // Backwards Mixing.
+        for i in 0..8 {
+            if i == 3 || i == 7 {
+                a = a.wrapping_sub(b);
+            }
+
+            if i == 2 || i == 6 {
+                a = a.wrapping_sub(d);
+            }
+
+            b = b ^ s1(a);
+            c = c.wrapping_sub(s0(a.rotate_left(8)));
+            d = d.wrapping_sub(s1(a.rotate_left(16))) ^ s0(a.rotate_left(24));
+            let aa = a;
+            a = b;
+            b = c;
+            c = d;
+            d = aa.rotate_left(24);
+        }
+
+        a = a.wrapping_sub(self.key[36]);
+        b = b.wrapping_sub(self.key[37]);
+        c = c.wrapping_sub(self.key[38]);
+        d = d.wrapping_sub(self.key[39]);
+
+        (a, b, c, d)
+    }
+
+    /// decrypt a block of data.
+    pub fn decrypt(&self, a: u32, b: u32, c: u32, d: u32) -> (u32, u32, u32, u32) {
+        self.encrypt(a, b, c, d)
+    }
 }
 
 // Private methods.
@@ -274,5 +366,17 @@ mod tests {
             0b01111111111000111111110000000000,
             Mars::compute_key_mask(0b00000000000010000000000111111111)
         );
+    }
+
+    #[test]
+    fn encrypt_and_decrypt() {
+        let instance = Mars::new(&[42u32; 14]);
+        let (e1, e2, e3, e4) = instance.encrypt(2, 4, 24, 42);
+        let (d1, d2, d3, d4) = instance.decrypt(e1, e2, e3, e4);
+
+        assert_eq!(2, d1);
+        assert_eq!(4, d2);
+        assert_eq!(24, d3);
+        assert_eq!(42, d4);
     }
 }
