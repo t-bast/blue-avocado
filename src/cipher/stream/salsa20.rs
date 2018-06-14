@@ -41,6 +41,10 @@ fn double_round(x: [u32; 16]) -> [u32; 16] {
     row_round(column_round(x))
 }
 
+fn little_endian(b: [u8; 4]) -> u32 {
+    b[0] as u32 + ((b[1] as u32) << 8) + ((b[2] as u32) << 16) + ((b[3] as u32) << 24)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +160,12 @@ mod tests {
                 0xd9421b6d, 0x67b276c1,
             ])
         );
+    }
+
+    #[test]
+    fn little_endian_spec() {
+        assert_eq!(0, little_endian([0, 0, 0, 0]));
+        assert_eq!(0x091e4b56, little_endian([86, 75, 30, 9]));
+        assert_eq!(0xfaffffff, little_endian([255, 255, 255, 250]));
     }
 }
