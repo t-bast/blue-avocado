@@ -4,6 +4,61 @@
 //! Salsa20 is a hash function that can be used in
 //! counter mode to act as a stream cipher.
 
+/// A Salsa20 stream cipher.
+pub struct Salsa20 {
+    k0: [u8; 16],
+    k1: [u8; 16],
+}
+
+impl Salsa20 {
+    /// new creates a new Salsa20 cipher with the given key.
+    pub fn new(key: [u8; 32]) -> Salsa20 {
+        let mut instance = Salsa20 {
+            k0: [0u8; 16],
+            k1: [0u8; 16],
+        };
+
+        for i in 0..16 {
+            instance.k0[i] = key[i];
+            instance.k1[i] = key[16 + i];
+        }
+
+        instance
+    }
+
+    /// encrypt a message with a given nonce.
+    /// You must make sure you never reuse the same nonce.
+    pub fn encrypt(&self, message: &[u8], nonce: [u8; 8]) -> Vec<u8> {
+        let l = message.len();
+
+        let mut res = Vec::from(message);
+        let mut current = [0u8; 64];
+
+        for i in 0..l {
+            if i % 64 == 0 {
+                let q = (i / 64) as u64;
+                let mut n = [0u8; 16];
+                for i in 0..8 {
+                    n[i] = nonce[i];
+                    n[8 + i] = (q >> (8 * i)) as u8;
+                }
+
+                current = key_expansion(self.k0, self.k1, n);
+            }
+
+            res[i] = res[i] ^ current[i % 64];
+        }
+
+        res
+    }
+
+    /// decrypt a cipher with a given nonce.
+    /// You must make sure you never reuse the same nonce.
+    pub fn decrypt(&self, cipher: &[u8], nonce: [u8; 8]) -> Vec<u8> {
+        self.encrypt(cipher, nonce)
+    }
+}
+
 fn quarter_round(y: [u32; 4]) -> [u32; 4] {
     let mut z = [0u32; 4];
 
@@ -68,49 +123,7 @@ fn hash(b: [u8; 64]) -> [u8; 64] {
     res
 }
 
-fn key_expansion(k: [u8; 16], n: [u8; 16]) -> [u8; 64] {
-    let mut to_hash = [0u8; 64];
-
-    // tau0
-    to_hash[0] = 101;
-    to_hash[1] = 120;
-    to_hash[2] = 112;
-    to_hash[3] = 97;
-
-    for i in 4..20 {
-        to_hash[i] = k[i - 4];
-    }
-
-    // tau1
-    to_hash[20] = 110;
-    to_hash[21] = 100;
-    to_hash[22] = 32;
-    to_hash[23] = 49;
-
-    for i in 24..40 {
-        to_hash[i] = n[i - 24];
-    }
-
-    // tau2
-    to_hash[40] = 54;
-    to_hash[41] = 45;
-    to_hash[42] = 98;
-    to_hash[43] = 121;
-
-    for i in 44..60 {
-        to_hash[i] = k[i - 44];
-    }
-
-    // tau3
-    to_hash[60] = 116;
-    to_hash[61] = 101;
-    to_hash[62] = 32;
-    to_hash[63] = 107;
-
-    hash(to_hash)
-}
-
-fn key_expansion_2(k0: [u8; 16], k1: [u8; 16], n: [u8; 16]) -> [u8; 64] {
+fn key_expansion(k0: [u8; 16], k1: [u8; 16], n: [u8; 16]) -> [u8; 64] {
     let mut to_hash = [0u8; 64];
 
     // sigma0
@@ -324,24 +337,6 @@ mod tests {
 
     #[test]
     fn key_expansion_spec() {
-        let k: [u8; 16] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-        let n: [u8; 16] = [
-            101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116,
-        ];
-
-        assert!(
-            [
-                39, 173, 46, 248, 30, 200, 82, 17, 48, 67, 254, 239, 37, 18, 13, 247, 241, 200, 61,
-                144, 10, 55, 50, 185, 6, 47, 246, 253, 143, 86, 187, 225, 134, 85, 110, 246, 161,
-                163, 43, 235, 231, 94, 171, 51, 145, 214, 112, 29, 14, 232, 5, 16, 151, 140, 183,
-                141, 171, 9, 122, 181, 104, 182, 177, 193,
-            ].iter()
-                .eq(key_expansion(k, n).iter())
-        );
-    }
-
-    #[test]
-    fn key_expansion_2_spec() {
         let k0: [u8; 16] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
         let k1: [u8; 16] = [
             201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216,
@@ -357,7 +352,24 @@ mod tests {
                 197, 153, 31, 2, 102, 78, 76, 176, 84, 245, 246, 184, 177, 160, 133, 130, 6, 72,
                 149, 119, 192, 195, 132, 236, 234, 103, 246, 74,
             ].iter()
-                .eq(key_expansion_2(k0, k1, n).iter())
+                .eq(key_expansion(k0, k1, n).iter())
         );
+    }
+
+    #[test]
+    fn encrypt_and_decrypt() {
+        let mut k = [0u8; 32];
+        for i in 0..32 {
+            k[i] = i as u8;
+        }
+
+        let c = Salsa20::new(k);
+
+        let nonce = [0u8; 8];
+        let message = "there is no spoon".as_bytes();
+        let cipher = c.encrypt(message, nonce);
+        let decrypted = c.decrypt(&cipher, nonce);
+
+        assert_eq!(message, decrypted.as_slice());
     }
 }
